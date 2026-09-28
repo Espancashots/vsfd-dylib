@@ -14,8 +14,8 @@ static const void *SCUIOriginalBorderColorKey = &SCUIOriginalBorderColorKey;
 static NSMutableDictionary *SCUIPrefs(void) {
     NSDictionary *saved = [[NSUserDefaults standardUserDefaults] dictionaryForKey:SCUIPrefsKey];
     NSMutableDictionary *p = [@{
-        @"glass": @YES,
-        @"videoEnabled": @NO,
+        @"glass": @NO,
+        @"videoEnabled": @YES,
         @"videoMode": @0,              // 0 = original, 1 = personalizado
         @"glassIntensity": @0.62,
         @"cardColor": @[@0.08,@0.08,@0.08,@0.58],
@@ -154,8 +154,20 @@ static void SCUIApplyGlassToView(UIView *v, UIColor *cardColor, UIColor *accent,
 
 static void SCUIWalkViews(UIView *v, void (^block)(UIView *)) {
     if (!v) return;
+
+    // IMPORTANT: snapshot BEFORE block(v). The block may insert/remove subviews.
+    // Walking newly inserted UIVisualEffectView internals recursively can grow the
+    // hierarchy indefinitely and eventually terminate the host app.
+    NSArray<UIView *> *children = [v.subviews copy];
     block(v);
-    for (UIView *child in [v.subviews copy]) SCUIWalkViews(child, block);
+
+    // Never inspect Apple's private blur hierarchy or our injected blur descendants.
+    if ([v isKindOfClass:UIVisualEffectView.class]) return;
+
+    for (UIView *child in children) {
+        if ([child isKindOfClass:UIVisualEffectView.class]) continue;
+        SCUIWalkViews(child, block);
+    }
 }
 
 @class SCUIOverlay;
@@ -281,7 +293,9 @@ static void SCUIWalkViews(UIView *v, void (^block)(UIView *)) {
         }
 
         SCUIWalkViews(window, ^(UIView *v) {
-            if ([v isKindOfClass:SCUIOverlay.class] || [v isDescendantOfView:(UIView *)[self.overlays anyObject]]) return;
+            for (SCUIOverlay *overlay in self.overlays) {
+                if (v == overlay || [v isDescendantOfView:overlay]) return;
+            }
             if (glass && SCUILooksLikeCard(v, window)) {
                 SCUIApplyGlassToView(v, card, accent, intensity);
             } else if (!glass) {
@@ -582,8 +596,26 @@ static void SCUIStart(void) {
                 }];
         }
 
-        m.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(__unused NSTimer *timer) {
-            [m install];
+        m.timer = [NSTimer scheduledTimerWithTimeInterval:3.0 repeats:YES block:^(__unused NSTimer *timer) {
+            // Only make sure the floating control survives view/window changes.
+            // Do not continuously rebuild the host visual hierarchy.
+            for (UIWindow *window in SCUIWindows()) {
+                if (window.hidden || window.windowLevel != UIWindowLevelNormal) continue;
+                BOOL found = NO;
+                for (UIView *v in window.subviews) {
+                    if ([v isKindOfClass:SCUIOverlay.class]) {
+                        found = YES;
+                        [window bringSubviewToFront:v];
+                        break;
+                    }
+                }
+                if (!found) {
+                    SCUIOverlay *o = [[SCUIOverlay alloc] initWithFrame:window.bounds];
+                    o.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+                    [window addSubview:o];
+                    [m.overlays addObject:o];
+                }
+            }
         }];
 
         if ([m.prefs[@"videoMode"] integerValue] == 1) [m reloadCustomVideo];
