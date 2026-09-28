@@ -1,4 +1,4 @@
-# SatanabeCleanUI v4
+# SatanabeCleanUI v4.1
 
 Dylib de aparência para o Satanabe External.
 
@@ -23,8 +23,14 @@ Estrutura:
 Source/SatanabeCleanUI.mm
 Makefile
 
-Abra Actions > Build SatanabeCleanUI v4 > Run workflow.
+Abra Actions > Build SatanabeCleanUI v4.1 > Run workflow.
 Baixe o artifact SatanabeCleanUI-v4.
 
 ## eSign
 Injete SatanabeCleanUI.dylib no executável do seu próprio app, assine novamente e instale.
+
+## v4.1 crash fix
+- O primeiro boot preserva o vídeo e o visual originais.
+- Liquid Glass começa desligado.
+- Corrigida recursão no UIVisualEffectView que podia crescer a árvore de views até o app encerrar.
+- O watchdog do flutuante não reaplica o visual a cada segundo.
