@@ -1,4 +1,4 @@
-name: Build SatanabeCleanUI v4.1
+name: Build SatanabeCleanUI v4.1 Debug
 
 on:
   workflow_dispatch:
@@ -18,34 +18,54 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate files
+      - name: Environment
         run: |
-          set -euxo pipefail
-          test -f Source/SatanabeCleanUI.mm
-          test -f Makefile
-          find . -maxdepth 3 -type f | sort
+          {
+            echo "===== REPOSITORY ====="
+            pwd
+            find . -maxdepth 3 -type f | sort
+            echo "===== XCODE ====="
+            xcodebuild -version
+            echo "===== SDK ====="
+            xcrun --sdk iphoneos --show-sdk-version
+            xcrun --sdk iphoneos --show-sdk-path
+            echo "===== CLANG ====="
+            xcrun --sdk iphoneos clang++ --version
+          } 2>&1 | tee environment.log
 
-      - name: Toolchain
+      - name: Build and capture full log
+        shell: bash
         run: |
-          set -euxo pipefail
-          xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
+          set +e
+          make clean 2>&1 | tee build.log
+          make inspect 2>&1 | tee -a build.log
+          STATUS=${PIPESTATUS[0]}
+          echo "$STATUS" > build-exit-code.txt
+          echo "===== BUILD EXIT CODE: $STATUS =====" | tee -a build.log
+          exit 0
 
-      - name: Build and diagnose
-        run: |
-          set -euxo pipefail
-          make clean
-          make inspect
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SatanabeCleanUI-build-logs
+          path: |
+            build.log
+            environment.log
+            build-exit-code.txt
+          if-no-files-found: warn
+          retention-days: 30
 
-      - name: Package
+      - name: Package dylib
+        if: hashFiles('build/SatanabeCleanUI.dylib') != ''
         run: |
-          set -euxo pipefail
           mkdir -p dist
           cp build/SatanabeCleanUI.dylib dist/
           shasum -a 256 build/SatanabeCleanUI.dylib > dist/SHA256.txt
           ditto -c -k --sequesterRsrc --keepParent dist SatanabeCleanUI-v4.1.zip
 
       - name: Upload dylib
+        if: hashFiles('build/SatanabeCleanUI.dylib') != ''
         uses: actions/upload-artifact@v4
         with:
           name: SatanabeCleanUI-v4.1
@@ -54,3 +74,13 @@ jobs:
             SatanabeCleanUI-v4.1.zip
           if-no-files-found: error
           retention-days: 30
+
+      - name: Mark build failed
+        shell: bash
+        run: |
+          STATUS="$(cat build-exit-code.txt)"
+          if [ "$STATUS" != "0" ]; then
+            echo "::error::Compilation failed with exit code $STATUS. Download artifact SatanabeCleanUI-build-logs for the complete compiler output."
+            exit "$STATUS"
+          fi
+          echo "Build succeeded."
