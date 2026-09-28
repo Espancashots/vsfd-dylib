@@ -1,1 +1,85 @@
+name: Build SatanabeCleanUI dylib
 
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'Source/**'
+      - 'Sources/**'
+      - 'Makefile'
+      - '.github/workflows/build.yml'
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show repository layout
+        run: |
+          set -euxo pipefail
+          find . -maxdepth 3 -type f | sort
+
+      - name: Validate source
+        run: |
+          set -euxo pipefail
+
+          if [ -f "Source/SatanabeCleanUI.mm" ]; then
+            SRC="Source/SatanabeCleanUI.mm"
+          elif [ -f "Sources/SatanabeCleanUI.mm" ]; then
+            SRC="Sources/SatanabeCleanUI.mm"
+          else
+            echo "ERRO: SatanabeCleanUI.mm nao encontrado em Source/ nem Sources/"
+            exit 1
+          fi
+
+          echo "Source detectado: $SRC"
+
+          if grep -n "NSAssert\|NSCAssert" "$SRC"; then
+            echo "AVISO: existe NSAssert/NSCAssert no source."
+          else
+            echo "Nenhum NSAssert/NSCAssert encontrado."
+          fi
+
+      - name: Show toolchain
+        run: |
+          set -euxo pipefail
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-path
+          clang --version
+
+      - name: Build and diagnose arm64 dylib
+        run: |
+          set -euxo pipefail
+          make clean
+          make inspect
+
+      - name: Prepare package
+        run: |
+          set -euxo pipefail
+          mkdir -p dist
+          cp build/SatanabeCleanUI.dylib dist/
+
+          if [ -f Source/SCUIConfig.h ]; then
+            cp Source/SCUIConfig.h dist/
+          elif [ -f Sources/SCUIConfig.h ]; then
+            cp Sources/SCUIConfig.h dist/
+          fi
+
+          shasum -a 256 build/SatanabeCleanUI.dylib > dist/SHA256.txt
+          ditto -c -k --sequesterRsrc --keepParent dist SatanabeCleanUI-dylib.zip
+
+      - name: Upload dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: SatanabeCleanUI-dylib
+          path: |
+            build/SatanabeCleanUI.dylib
+            SatanabeCleanUI-dylib.zip
+          if-no-files-found: error
+          retention-days: 30
