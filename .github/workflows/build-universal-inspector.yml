@@ -46,8 +46,8 @@ jobs:
           deployment target: iOS 13.0
           dylib size: $SIZE bytes
           install name: @rpath/UniversalUIInspector.dylib
-          linked frameworks: UIKit, QuartzCore
-          build command: xcrun --sdk iphoneos clang -dynamiclib -fobjc-arc -fblocks -fmodules -arch arm64 -isysroot $SDK -miphoneos-version-min=13.0 -framework UIKit -framework QuartzCore -install_name @rpath/UniversalUIInspector.dylib UniversalUIInspector/UniversalUIInspector.m -o UniversalUIInspector.dylib
+          linked frameworks: UIKit, QuartzCore; library: libz
+          build command: xcrun --sdk iphoneos clang -dynamiclib -fobjc-arc -fblocks -fmodules -arch arm64 -isysroot $SDK -miphoneos-version-min=13.0 -framework UIKit -framework QuartzCore -lz -install_name @rpath/UniversalUIInspector.dylib UniversalUIInspector/UniversalUIInspector.m -o UniversalUIInspector.dylib
           EOF
       - name: Package artifact
         run: |
