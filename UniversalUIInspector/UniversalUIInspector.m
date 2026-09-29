@@ -37,14 +37,20 @@ static void WriteReport(NSString *name, NSString *text) {
 static NSString *ReportPath(NSString *name) { return [[ReportsDirectory() URLByAppendingPathComponent:name] path]; }
 
 // Small uncompressed ZIP writer: creates a standards-compliant ZIP without third-party code.
+static void ZipU16(NSMutableData *d, uint16_t v) { [d appendBytes:&v length:2]; }
+static void ZipU32(NSMutableData *d, uint32_t v) { [d appendBytes:&v length:4]; }
 static NSData *ZipData(NSDictionary<NSString *,NSData *> *files) {
-    NSMutableData *zip=[NSMutableData data]; NSMutableArray *central=[NSMutableArray array]; NSUInteger offset=0;
+    NSMutableData *zip=[NSMutableData data]; NSMutableArray<NSData *> *central=[NSMutableArray array];
     for (NSString *name in files) {
-        NSData *data=files[name]; NSData *nameData=[name dataUsingEncoding:NSUTF8StringEncoding]; uLong crc=crc32(0,(const Bytef *)data.bytes,(uInt)data.length); uint32_t local[5]={0x04034b50,20,0,0,(uint32_t)crc};
-        uint32_t sizes[2]={(uint32_t)data.length,(uint32_t)data.length}; [zip appendBytes:local length:sizeof(local)]; [zip appendBytes:sizes length:sizeof(sizes)]; uint16_t nl=(uint16_t)nameData.length; [zip appendBytes:&nl length:2]; uint16_t extra=0; [zip appendBytes:&extra length:2]; [zip appendData:nameData]; [zip appendData:data];
-        NSMutableData *c=[NSMutableData data]; uint32_t ch[3]={0x02014b50,0x0314,20}; [c appendBytes:ch length:sizeof(ch)]; uint32_t flags[3]={0,0,(uint32_t)crc}; [c appendBytes:flags length:sizeof(flags)]; [c appendBytes:sizes length:sizeof(sizes)]; [c appendBytes:&nl length:2]; [c appendBytes:&extra length:2]; uint16_t comment=0,disk=0,intattr=0; uint32_t ext=0; [c appendBytes:&comment length:2]; [c appendBytes:&disk length:2]; [c appendBytes:&intattr length:2]; [c appendBytes:&ext length:4]; uint32_t off=(uint32_t)offset; [c appendBytes:&off length:4]; [c appendData:nameData]; [central addObject:c]; offset=zip.length;
+        NSData *data=files[name]; NSData *nameData=[name dataUsingEncoding:NSUTF8StringEncoding]; uint32_t crc=(uint32_t)crc32(0,(const Bytef *)data.bytes,(uInt)data.length); uint32_t size=(uint32_t)data.length; uint32_t offset=(uint32_t)zip.length;
+        // Local file header: signature, version, UTF-8 flag, stored method, times, CRC, sizes, name and extra lengths.
+        ZipU32(zip,0x04034b50); ZipU16(zip,20); ZipU16(zip,0x0800); ZipU16(zip,0); ZipU16(zip,0); ZipU16(zip,0); ZipU32(zip,crc); ZipU32(zip,size); ZipU32(zip,size); ZipU16(zip,(uint16_t)nameData.length); ZipU16(zip,0); [zip appendData:nameData]; [zip appendData:data];
+        NSMutableData *c=[NSMutableData data];
+        // Central directory header.
+        ZipU32(c,0x02014b50); ZipU16(c,20); ZipU16(c,20); ZipU16(c,0x0800); ZipU16(c,0); ZipU16(c,0); ZipU16(c,0); ZipU32(c,crc); ZipU32(c,size); ZipU32(c,size); ZipU16(c,(uint16_t)nameData.length); ZipU16(c,0); ZipU16(c,0); ZipU16(c,0); ZipU16(c,0); ZipU32(c,0); ZipU32(c,offset); [c appendData:nameData]; [central addObject:c];
     }
-    NSUInteger centralOffset=zip.length; for (NSData *c in central) [zip appendData:c]; uint32_t end[5]={0x06054b50,0,0,(uint32_t)central.count,(uint32_t)central.count}; uint32_t endSize=(uint32_t)(zip.length-centralOffset), endOffset=(uint32_t)centralOffset; [zip appendBytes:end length:sizeof(end)]; [zip appendBytes:&endSize length:4]; [zip appendBytes:&endOffset length:4]; return zip; [zip appendBytes:end length:sizeof(end)]; return zip;
+    uint32_t centralOffset=(uint32_t)zip.length; for(NSData *c in central)[zip appendData:c]; uint32_t centralSize=(uint32_t)zip.length-centralOffset;
+    ZipU32(zip,0x06054b50); ZipU16(zip,0); ZipU16(zip,0); ZipU16(zip,(uint16_t)central.count); ZipU16(zip,(uint16_t)central.count); ZipU32(zip,centralSize); ZipU32(zip,centralOffset); ZipU16(zip,0); return zip;
 }
 
 static void AppendViewTree(UIView *v, NSUInteger depth, NSUInteger *nodes, NSMutableString *out) {
