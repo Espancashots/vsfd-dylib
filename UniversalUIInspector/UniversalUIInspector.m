@@ -82,8 +82,7 @@ static UIWindow *FindHostWindow(UIWindowScene **sceneOut, NSString **evidence) {
 @property(nonatomic) BOOL started;
 + (instancetype)shared;
 - (void)start;
-- (void)showMenu;
-- (void)writeStartupReports;
+- (void)showMenu { if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{[self showMenu];});return;} UIAlertController *a=[UIAlertController alertControllerWithTitle:@"Universal UI Inspector" message:@"Read-only diagnostics" preferredStyle:UIAlertControllerStyleActionSheet]; NSArray *items=@[ @[ @"Dump Visible Hierarchy", ^{ WriteReport(@"CURRENT_VIEW_HIERARCHY.txt",self.hierarchy); } ], @[ @"View Controllers", ^{ WriteReport(@"CURRENT_CONTROLLERS.txt",self.controllers); } ], @[ @"Runtime Classes", ^{ WriteReport(@"RUNTIME_CLASSES.txt",self.classes); } ], @[ @"Loaded Images", ^{ WriteReport(@"LOADED_IMAGES.txt",self.images); } ], @[ @"Diagnostics", ^{ WriteReport(@"DIAGNOSTICS.txt",self.diagnostics); } ], @[ @"Export Reports", ^{ [self exportReports]; } ] ]; for(NSArray *item in items) [a addAction:[UIAlertAction actionWithTitle:item[0] style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *x){ ((void(^)(void))item[1])(); }]]; [a addAction:[UIAlertAction actionWithTitle:@"Close" style:UIAlertActionStyleCancel handler:nil]]; UIPopoverPresentationController *pop=a.popoverPresentationController; pop.sourceView=self.button; pop.sourceRect=self.button.bounds; pop.permittedArrowDirections=UIPopoverArrowDirectionAny; [[self presenter] presentViewController:a animated:YES completion:nil]; }
 - (void)exportReports;
 @end
 
