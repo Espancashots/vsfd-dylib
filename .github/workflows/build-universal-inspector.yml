@@ -25,6 +25,7 @@ jobs:
             -dynamiclib -fobjc-arc -fblocks -fmodules \
             -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
             -framework UIKit -framework QuartzCore \
+            -lz \
             -install_name @rpath/UniversalUIInspector.dylib \
             UniversalUIInspector/UniversalUIInspector.m \
             -o UniversalUIInspector.dylib
