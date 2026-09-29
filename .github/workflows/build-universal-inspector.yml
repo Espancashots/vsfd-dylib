@@ -1,0 +1,45 @@
+name: Build UniversalUIInspector dylib
+on:
+  workflow_dispatch:
+  push:
+    branches: [ universal-inspector-build ]
+    paths:
+      - 'UniversalUIInspector/**'
+      - '.github/workflows/build-universal-inspector.yml'
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build arm64 iOS dylib
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          xcrun --sdk iphoneos clang \
+            -dynamiclib -fobjc-arc -fblocks -fmodules \
+            -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
+            -framework UIKit -framework QuartzCore \
+            -install_name @rpath/UniversalUIInspector.dylib \
+            UniversalUIInspector/UniversalUIInspector.m \
+            -o UniversalUIInspector.dylib
+          file UniversalUIInspector.dylib
+          xcrun lipo UniversalUIInspector.dylib -verify_arch arm64
+          xcrun otool -L UniversalUIInspector.dylib
+          shasum -a 256 UniversalUIInspector.dylib | tee UniversalUIInspector-SHA256.txt
+      - name: Package artifact
+        run: |
+          mkdir -p dist
+          cp UniversalUIInspector.dylib UniversalUIInspector-SHA256.txt UniversalUIInspector/README.txt dist/
+          ditto -c -k --sequesterRsrc --keepParent dist UniversalUIInspector-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UniversalUIInspector-arm64
+          path: |
+            UniversalUIInspector.dylib
+            UniversalUIInspector-arm64.zip
+            UniversalUIInspector-SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
