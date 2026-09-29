@@ -17,7 +17,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          exec > >(tee BUILD_LOG.txt) 2>&1
           SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          XCODE="$(xcodebuild -version | tr "\n" " ")"
+          SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
           xcrun --sdk iphoneos clang \
             -dynamiclib -fobjc-arc -fblocks -fmodules \
             -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
@@ -27,19 +30,38 @@ jobs:
             -o UniversalUIInspector.dylib
           file UniversalUIInspector.dylib
           xcrun lipo UniversalUIInspector.dylib -verify_arch arm64
-          xcrun otool -L UniversalUIInspector.dylib
-          shasum -a 256 UniversalUIInspector.dylib | tee UniversalUIInspector-SHA256.txt
+          xcrun otool -L UniversalUIInspector.dylib | tee LINKED_FRAMEWORKS.txt
+          xcrun otool -hv UniversalUIInspector.dylib | tee MACHO_HEADER.txt
+          shasum -a 256 UniversalUIInspector.dylib | tee SHA256.txt
+          SIZE="$(stat -f%z UniversalUIInspector.dylib)"
+          cat > BUILD_INFO.txt <<EOF
+          branch: universal-inspector-build
+          commit: $(git rev-parse HEAD)
+          runner: macos-14
+          xcode: $XCODE
+          iOS SDK: $SDK_VERSION
+          architecture: arm64
+          platform: iOS device
+          deployment target: iOS 13.0
+          dylib size: $SIZE bytes
+          install name: @rpath/UniversalUIInspector.dylib
+          linked frameworks: UIKit, QuartzCore
+          build command: xcrun --sdk iphoneos clang -dynamiclib -fobjc-arc -fblocks -fmodules -arch arm64 -isysroot $SDK -miphoneos-version-min=13.0 -framework UIKit -framework QuartzCore -install_name @rpath/UniversalUIInspector.dylib UniversalUIInspector/UniversalUIInspector.m -o UniversalUIInspector.dylib
+          EOF
       - name: Package artifact
         run: |
+          set -euxo pipefail
           mkdir -p dist
-          cp UniversalUIInspector.dylib UniversalUIInspector-SHA256.txt UniversalUIInspector/README.txt dist/
-          ditto -c -k --sequesterRsrc --keepParent dist UniversalUIInspector-arm64.zip
+          cp UniversalUIInspector.dylib BUILD_INFO.txt BUILD_LOG.txt SHA256.txt UniversalUIInspector/README.txt dist/
+          ditto -c -k --sequesterRsrc --keepParent dist UniversalUIInspector-BUILD.zip
       - uses: actions/upload-artifact@v4
         with:
           name: UniversalUIInspector-arm64
           path: |
             UniversalUIInspector.dylib
-            UniversalUIInspector-arm64.zip
-            UniversalUIInspector-SHA256.txt
+            UniversalUIInspector-BUILD.zip
+            BUILD_INFO.txt
+            BUILD_LOG.txt
+            SHA256.txt
           if-no-files-found: error
           retention-days: 30
