@@ -1,46 +1,19 @@
-DYLIB := SatanabeCleanUI.dylib
-BUILD := build
-SRC := Source/SatanabeCleanUI.mm
-OBJ := $(BUILD)/SatanabeCleanUI.o
-OUT := $(BUILD)/$(DYLIB)
-MIN_IOS ?= 15.0
 SDK := $(shell xcrun --sdk iphoneos --show-sdk-path)
+CLANG := xcrun --sdk iphoneos clang
+CFLAGS := -arch arm64 -isysroot "$(SDK)" -miphoneos-version-min=14.0 -fobjc-arc -fblocks -O2 -dynamiclib
+FRAMEWORKS := -framework Foundation -framework UIKit -framework QuartzCore -framework Metal -framework MetalKit
+LDFLAGS := -Wl,-install_name,@rpath/ResolutionTrace.dylib
 
-.PHONY: all clean inspect diagnose
+.PHONY: all clean inspect
+all: build/SatanabeCleanUI.dylib
 
-all: $(OUT)
+build/SatanabeCleanUI.dylib: Sources/ResolutionTrace.m
+	mkdir -p build
+	$(CLANG) $(CFLAGS) $(FRAMEWORKS) $(LDFLAGS) $< -o $@
 
-$(BUILD):
-	mkdir -p $(BUILD)
-
-$(OBJ): $(SRC) | $(BUILD)
-	xcrun --sdk iphoneos clang++ \
-		-arch arm64 -c -fobjc-arc -fblocks -fmodules -std=c++17 -O2 \
-		-isysroot "$(SDK)" -miphoneos-version-min=$(MIN_IOS) \
-		$(SRC) -o $(OBJ)
-
-diagnose: $(OBJ)
-	@echo "===== UNDEFINED SYMBOLS BEFORE LINK ====="
-	xcrun nm -u $(OBJ) | sort || true
-
-$(OUT): $(OBJ)
-	xcrun --sdk iphoneos clang++ \
-		-arch arm64 -dynamiclib -fobjc-arc -fblocks \
-		-isysroot "$(SDK)" -miphoneos-version-min=$(MIN_IOS) \
-		-framework Foundation \
-		-framework UIKit \
-		-framework AVFoundation \
-		-framework QuartzCore \
-		-framework CoreGraphics \
-		-framework UniformTypeIdentifiers \
-		-Wl,-install_name,@rpath/$(DYLIB) \
-		-Wl,-dead_strip \
-		$(OBJ) -o $(OUT)
-
-inspect: diagnose $(OUT)
-	file $(OUT)
-	xcrun lipo $(OUT) -verify_arch arm64
-	xcrun otool -L $(OUT)
+inspect: build/SatanabeCleanUI.dylib
+	file build/SatanabeCleanUI.dylib
+	otool -hv build/SatanabeCleanUI.dylib | head -8
 
 clean:
-	rm -rf $(BUILD)
+	rm -rf build dist *.zip
